@@ -1,0 +1,36 @@
+# ============================================================
+# docker-compose.override.yml  —  LOCAL DEVELOPMENT ONLY
+#
+# Automatically merged with docker-compose.yml by Docker Compose
+# when you run `docker compose up` (no extra flags needed).
+#
+# What this adds:
+#   - Mounts src/ as a live bind-mount so code changes take effect
+#     without rebuilding the image (hot reload via --reload flag)
+#   - Sets LOG_LEVEL=debug for verbose output
+#   - Disables the restart policy so crashed containers stay stopped
+#     (easier to debug than auto-restart loops)
+#
+# For production, use:
+#   docker compose -f docker-compose.yml up -d
+# (explicitly excludes this override file)
+# ============================================================
+
+services:
+  rag-api:
+    # Override the CMD to enable uvicorn hot reload
+    command: ["python", "-m", "uvicorn", "src.api:app",
+              "--host", "0.0.0.0",
+              "--port", "8000",
+              "--reload",
+              "--log-level", "debug"]
+
+    # Live-mount the source so edits are reflected immediately
+    volumes:
+      - ./src:/app/src
+
+    # Don't auto-restart on crash during development
+    restart: "no"
+
+    environment:
+      - LOG_LEVEL=debug

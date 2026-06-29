@@ -1,0 +1,124 @@
+# ============================================================
+# Enterprise Knowledge Graph & Hybrid RAG Pipeline
+# docker-compose.yml  —  production stack
+# ============================================================
+
+services:
+
+  # ── Ollama LLM server ────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag-ollama
+    restart: unless-stopped
+
+    volumes:
+      - ollama_models:/root/.ollama
+
+    ports:
+      - "11434:11434"
+
+    networks:
+      - rag-net
+
+    # ollama/ollama image has no curl — use the ollama CLI itself to check
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+
+
+  # ── One-shot model puller ────────────────────────────────────────────────
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: rag-ollama-init
+    restart: "no"
+
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Pulling llama3.2 (generation model ~2 GB)..."
+        ollama pull llama3.2
+        echo "Pulling llama3.2:1b (scoring model ~1.3 GB)..."
+        ollama pull llama3.2:1b
+        echo "✅ Models ready."
+
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+
+    volumes:
+      - ollama_models:/root/.ollama
+
+    networks:
+      - rag-net
+
+
+  # ── FastAPI RAG application ───────────────────────────────────────────────
+  rag-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-api
+    restart: unless-stopped
+
+    depends_on:
+      ollama-init:
+        condition: service_completed_successfully
+
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_CONNECT_TIMEOUT=30.0
+      - HF_HOME=/app/.cache/huggingface
+      - TRANSFORMERS_CACHE=/app/.cache/huggingface
+      - FLASHRANK_CACHE=/app/.cache/flashrank
+
+    env_file:
+      - .env
+
+    volumes:
+      - pipeline_storage:/app/data/storage
+      - pipeline_markdown:/app/data/parsed_markdown
+      - pipeline_eval:/app/data/eval_results
+      - ./data/raw_pdfs:/app/data/raw_pdfs:ro
+      - hf_cache:/app/.cache/huggingface
+      - flashrank_cache:/app/.cache/flashrank
+
+    ports:
+      - "8000:8000"
+
+    networks:
+      - rag-net
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+
+
+# ── Named volumes ─────────────────────────────────────────────────────────────
+volumes:
+  ollama_models:
+    driver: local
+  pipeline_storage:
+    driver: local
+  pipeline_markdown:
+    driver: local
+  pipeline_eval:
+    driver: local
+  hf_cache:
+    driver: local
+  flashrank_cache:
+    driver: local
+
+
+# ── Network ──────────────────────────────────────────────────────────────────
+networks:
+  rag-net:
+    driver: bridge

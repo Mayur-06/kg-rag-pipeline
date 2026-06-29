@@ -1,0 +1,139 @@
+# ============================================================
+# docker-compose.prod.yml  —  PRODUCTION (GCP VM)
+#
+# Differences from docker-compose.yml (dev):
+#   - data/storage, data/parsed_markdown, data/eval_results are
+#     BIND-MOUNTED from the host instead of named volumes.
+#     This means pre-built pkl files on disk are used directly —
+#     no re-embedding needed after copying them to the VM.
+#   - HuggingFace + FlashRank caches use named volumes (still
+#     persisted, but no need to copy model weights manually).
+#   - No override file — this is the authoritative prod config.
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml logs -f
+#   docker compose -f docker-compose.prod.yml down
+# ============================================================
+
+services:
+
+  # ── Ollama LLM server ────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag-ollama
+    restart: unless-stopped
+
+    volumes:
+      - ollama_models:/root/.ollama
+
+    ports:
+      - "11434:11434"
+
+    networks:
+      - rag-net
+
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+
+
+  # ── One-shot model puller ────────────────────────────────────────────────
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: rag-ollama-init
+    restart: "no"
+
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Pulling llama3.2 (generation model ~2 GB)..."
+        ollama pull llama3.2
+        echo "Pulling llama3.2:1b (scoring model ~1.3 GB)..."
+        ollama pull llama3.2:1b
+        echo "✅ Models ready."
+
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+
+    volumes:
+      - ollama_models:/root/.ollama
+
+    networks:
+      - rag-net
+
+
+  # ── FastAPI RAG application ───────────────────────────────────────────────
+  rag-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-api
+    restart: unless-stopped
+
+    depends_on:
+      ollama-init:
+        condition: service_completed_successfully
+
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_CONNECT_TIMEOUT=30.0
+      - HF_HOME=/app/.cache/huggingface
+      - TRANSFORMERS_CACHE=/app/.cache/huggingface
+      - FLASHRANK_CACHE=/app/.cache/flashrank
+
+    env_file:
+      - .env
+
+    volumes:
+      # ── Bind mounts from VM host disk ──────────────────────────────────
+      # pkl caches + parsed markdown live on the VM's disk.
+      # Copy them there with gcloud compute scp before first launch.
+      # This eliminates the 50-min re-embedding step on every fresh deploy.
+      - ./data/storage:/app/data/storage
+      - ./data/parsed_markdown:/app/data/parsed_markdown
+      - ./data/eval_results:/app/data/eval_results
+
+      # Raw PDFs — read-only bind mount
+      - ./data/raw_pdfs:/app/data/raw_pdfs:ro
+
+      # ── Named volumes for model caches ─────────────────────────────────
+      # BGE (~130 MB) and FlashRank (~120 MB) download once and persist.
+      - hf_cache:/app/.cache/huggingface
+      - flashrank_cache:/app/.cache/flashrank
+
+    ports:
+      - "8000:8000"
+
+    networks:
+      - rag-net
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+
+
+# ── Named volumes (model caches only — data uses bind mounts above) ──────────
+volumes:
+  ollama_models:
+    driver: local
+  hf_cache:
+    driver: local
+  flashrank_cache:
+    driver: local
+
+
+# ── Network ──────────────────────────────────────────────────────────────────
+networks:
+  rag-net:
+    driver: bridge

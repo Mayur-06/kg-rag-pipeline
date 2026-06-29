@@ -1,0 +1,70 @@
+# ============================================================
+# .dockerignore
+# Keeps the build context lean — only what the Dockerfile needs
+# gets sent to the Docker daemon.
+# ============================================================
+
+# --- Python artifacts ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# --- Virtual environments ---
+.venv/
+venv/
+RAGvenv/
+env/
+ENV/
+
+# --- Git ---
+.git/
+.gitignore
+.gitattributes
+
+# --- IDE / editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- Data: raw PDFs are bind-mounted at runtime, not baked into the image ---
+data/raw_pdfs/
+
+# --- Data: pipeline caches are mounted as named volumes, not baked in ---
+data/storage/
+data/parsed_markdown/
+data/eval_results/
+
+# --- HuggingFace / model caches ---
+.cache/
+*.cache
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Test files (not needed in production image) ---
+tests/
+temp_ollama_test.py
+
+# --- Docs ---
+docs/
+*.md
+!README.md
+
+# --- Notebooks ---
+notebooks/
+
+# --- Docker files themselves (no need to copy into the image) ---
+Dockerfile
+docker-compose*.yml
+.dockerignore

@@ -1,0 +1,44 @@
+# --- Secrets (never commit these) ---
+.env
+*.pem
+*.key
+
+# --- Large binary assets ---
+data/raw_pdfs/*.pdf
+data/parsed_markdown/*.md
+data/storage/bm25_index.pkl
+data/storage/parent_nodes.pkl
+data/eval_results/*.csv
+data/eval_results/*.html
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Environments ---
+.venv/
+venv/
+env/
+ENV/
+RAGvenv/
+
+# --- IDEs ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS ---
+.DS_Store
+Thumbs.db
