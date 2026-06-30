@@ -286,8 +286,7 @@ kg-rag-pipeline/
 
 ---
 
-## Key design decisions (for interviews/walkthroughs)
-
+## Key design decisions
 **Why RRF instead of a weighted score average?**
 BM25 and cosine similarity scores are on incompatible scales. BM25 is an
 unbounded corpus-dependent score; cosine is bounded [-1, 1]. Averaging requires
